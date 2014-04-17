@@ -39,6 +39,7 @@ ZEND_API zval* zend_call_method(zval **object_pp, zend_class_entry *obj_ce, zend
   paramInit.append(tvAsVariant(arg1->tv()));
   paramInit.append(tvAsVariant(arg2->tv()));
   const HPHP::Array params(paramInit.create());
+  // FIXME: needs exception guard
   HPHP::Variant ret = HPHP::vm_call_user_func(f_name, params);
   auto ref = ret.asRef()->m_data.pref;
   ref->incRefCount();
