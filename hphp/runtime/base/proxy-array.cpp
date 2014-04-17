@@ -392,15 +392,19 @@ ResourceData * ProxyArray::makeElementResource(
 }
 
 void * ProxyArray::proxyGet(StringData * str) const {
-  return elementToData(m_ad->nvGet(str));
+  // FIXME: const_cast is a bug, may destroy shared data
+  return elementToData(const_cast<TypedValue*>(m_ad->nvGet(str)));
 }
 
 void * ProxyArray::proxyGet(int64_t k) const {
-  return elementToData(m_ad->nvGet(k));
+  // FIXME: const_cast is a bug, may destroy shared data
+  return elementToData(const_cast<TypedValue*>(m_ad->nvGet(k)));
 }
 
 void * ProxyArray::proxyGetValueRef(ssize_t pos) const {
-  return elementToData(m_ad->nvGetValueRef(pos));
+  auto& val = m_ad->getValueRef(pos);
+  // FIXME: we shouldn't be modifying this TypedValue
+  return elementToData(const_cast<HPHP::TypedValue*>(val.asTypedValue()));
 }
 
 void * ProxyArray::elementToData(TypedValue * tv) const {
