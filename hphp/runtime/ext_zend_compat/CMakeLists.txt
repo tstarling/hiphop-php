@@ -1,4 +1,5 @@
 INCLUDE(CMakeDependentOption)
+INCLUDE(FindLua51)
 CMAKE_DEPENDENT_OPTION(ENABLE_MONGO
   "Enable Mongo extension (requires ENABLE_ZEND_COMPAT)" OFF
   "ENABLE_ZEND_COMPAT" OFF)
@@ -47,6 +48,12 @@ if (ENABLE_ZEND_COMPAT)
     elseif (${ezc_project} STREQUAL "ezc_test")
       if (ENABLE_EZC_TEST)
         HHVM_SELECT_SOURCES("${EZC_DIR}/ezc_test")
+      endif()
+    elseif (${ezc_project} STREQUAL "luasandbox")
+      if (LUA51_FOUND)
+        include_directories(${LUA_INCLUDE_DIR})
+        list(APPEND ZEND_COMPAT_LINK_LIBRARIES ${LUA_LIBRARIES})
+        HHVM_SELECT_SOURCES("${EZC_DIR}/luasandbox")
       endif()
     else()
       HHVM_SELECT_SOURCES("${EZC_DIR}/${ezc_project}")
