@@ -37,6 +37,7 @@ ZEND_API zval* zend_call_method(zval **object_pp, zend_class_entry *obj_ce, zend
   HPHP::String f_name(function_name, function_name_len, HPHP::CopyString);
   const HPHP::Array params = HPHP::make_packed_array(
     tvAsVariant(arg1->tv()), tvAsVariant(arg2->tv()));
+  // FIXME: needs exception guard
   HPHP::Variant ret = HPHP::vm_call_user_func(f_name, params);
   auto ref = ret.asRef()->m_data.pref;
   ref->incRefCount();
