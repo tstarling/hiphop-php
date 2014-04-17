@@ -382,6 +382,41 @@ static void ezc_hash_element_dtor(void * data) /* {{{ */
 }
 /* }}} */
 
+/* {{{ proto mixed ezc_min(mixed arg1 [, mixed arg2 [, mixed ...]])
+   Varadic argument test, equivalent to min() */
+PHP_FUNCTION(ezc_min)
+{
+  int argc;
+  zval ***args = NULL;
+
+  if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "+", &args, &argc) == FAILURE) {
+    return;
+  }
+
+  zval **min;
+  zval * result;
+  ALLOC_ZVAL(result);
+  int i;
+
+  min = args[0];
+
+  for (i = 1; i < argc; i++) {
+    is_smaller_function(result, *args[i], *min TSRMLS_CC);
+    if (Z_LVAL_P(result) == 1) {
+      min = args[i];
+    }
+  }
+  FREE_ZVAL(result);
+
+  RETVAL_ZVAL(*min, 1, 0);
+
+  if (args) {
+    efree(args);
+  }
+}
+
+/* }}} */
+
 /* {{{ arginfo */
 ZEND_BEGIN_ARG_INFO(arginfo_ezc_fetch_global, 0)
 ZEND_END_ARG_INFO()
@@ -435,6 +470,12 @@ ZEND_BEGIN_ARG_INFO(arginfo_ezc_hash_append, 0)
   ZEND_ARG_INFO(0, value)
 ZEND_END_ARG_INFO()
 
+ZEND_BEGIN_ARG_INFO_EX(arginfo_ezc_min, 0, 0, 1)
+  ZEND_ARG_INFO(0, arg1)
+  ZEND_ARG_INFO(0, arg2)
+  ZEND_ARG_INFO(0, ...)
+ZEND_END_ARG_INFO()
+
 /* }}} */
 
 /* {{{ ezc_test_functions[]
@@ -452,6 +493,7 @@ const zend_function_entry ezc_test_functions[] = {
   PHP_FE(ezc_hash_set, arginfo_ezc_hash_set)
   PHP_FE(ezc_hash_get, arginfo_ezc_hash_get)
   PHP_FE(ezc_hash_append, arginfo_ezc_hash_append)
+  PHP_FE(ezc_min, arginfo_ezc_min)
   PHP_FE_END
 };
 /* }}} */

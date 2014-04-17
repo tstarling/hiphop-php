@@ -64,3 +64,9 @@ function ezc_hash_get(mixed $table, string $key): mixed;
  */
 <<__Native("ZendCompat")>>
 function ezc_hash_append(mixed $table, string $value): mixed;
+
+/* Varadic argument test, equivalent to min()
+ */
+<<__Native("ZendCompat")>>
+  function ezc_min(): mixed;
+
