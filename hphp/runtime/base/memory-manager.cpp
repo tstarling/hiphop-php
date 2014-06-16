@@ -170,6 +170,7 @@ MemoryManager::MemoryManager()
 }
 
 void MemoryManager::resetStatsImpl(bool isInternalCall) {
+#if 0
 #ifdef USE_JEMALLOC
   FTRACE(1, "resetStatsImpl({}) pre:\n", isInternalCall);
   FTRACE(1, "usage: {}\nalloc: {}\npeak usage: {}\npeak alloc: {}\n",
@@ -247,6 +248,7 @@ void MemoryManager::resetStatsImpl(bool isInternalCall) {
     "usage: {}\nalloc: {}\npeak usage: {}\npeak alloc: {}\n\n",
     isInternalCall,
     m_stats.usage, m_stats.alloc, m_stats.peakUsage, m_stats.peakAlloc);
+#endif
 #endif
 }
 

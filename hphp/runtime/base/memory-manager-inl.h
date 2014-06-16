@@ -228,6 +228,8 @@ inline bool MemoryManager::sweeping() {
 }
 
 inline void* MemoryManager::smartMallocSize(uint32_t bytes) {
+  return malloc(bytes);
+#if 0
   assert(bytes > 0);
   assert(bytes <= kMaxSmartSize + kDebugExtraSize);
 
@@ -244,9 +246,12 @@ inline void* MemoryManager::smartMallocSize(uint32_t bytes) {
 
   FTRACE(3, "smartMallocSize: {} -> {}\n", bytes, p);
   return debugPostAllocate(p, bytes, bytes);
+#endif
 }
 
 inline void MemoryManager::smartFreeSize(void* ptr, uint32_t bytes) {
+  free(ptr);
+#if 0
   assert(bytes > 0);
   assert(bytes <= kMaxSmartSize + kDebugExtraSize);
   assert((reinterpret_cast<uintptr_t>(ptr) & kSmartSizeAlignMask) == 0);
@@ -256,6 +261,7 @@ inline void MemoryManager::smartFreeSize(void* ptr, uint32_t bytes) {
   m_stats.usage -= bytes;
 
   FTRACE(3, "smartFreeSize: {} ({} bytes)\n", ptr, bytes);
+#endif
 }
 
 template<bool callerSavesActualSize>
