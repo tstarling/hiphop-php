@@ -21,6 +21,7 @@
 #include "hphp/runtime/ext/ext_domdocument.h"
 #include "hphp/runtime/base/class-info.h"
 #include "hphp/system/systemlib.h"
+#include "hphp/runtime/vm/vm-regs.h"
 
 namespace HPHP {
 
@@ -1122,6 +1123,7 @@ Variant f_simplexml_load_string(
   int64_t options /* = 0 */,
   const String& ns /* = "" */,
   bool is_prefix /* = false */) {
+  SYNC_VM_REGS_SCOPED();
   Class* cls = class_from_name(class_name, "simplexml_load_string");
   if (!cls) {
     return init_null();
@@ -1192,6 +1194,7 @@ void c_SimpleXMLElement::t___construct(const String& data,
                                        bool data_is_url /* = false */,
                                        const String& ns /* = "" */,
                                        bool is_prefix /* = false */) {
+  SYNC_VM_REGS_SCOPED();
   xmlDocPtr docp = data_is_url ?
     xmlReadFile(data.data(), nullptr, options) :
     xmlReadMemory(data.data(), data.size(), nullptr, nullptr, options);
