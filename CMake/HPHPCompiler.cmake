@@ -40,8 +40,11 @@ elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
   endif()
 
   # Use -Og with Debug builds in gcc >= 4.8
-  set(CMAKE_C_FLAGS_DEBUG    "-Og -g")
-  set(CMAKE_CXX_FLAGS_DEBUG  "-Og -g")
+  #set(CMAKE_C_FLAGS_DEBUG    "-Og -g")
+  #set(CMAKE_CXX_FLAGS_DEBUG  "-Og -g")
+  set(CMAKE_C_FLAGS_DEBUG    "-ggdb3")
+  set(CMAKE_CXX_FLAGS_DEBUG  "-ggdb3")
+
 
   # Generic GCC flags and Optional flags
   set(CMAKE_C_FLAGS_MINSIZEREL       "-Os -DNDEBUG")
