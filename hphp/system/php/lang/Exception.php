@@ -150,6 +150,11 @@ class Exception {
    * @return     mixed   Returns the Exception stack trace as a string.
    */
   final function getTraceAsString() {
+    if (!$this->inited) {
+      trigger_error(__METHOD__.': exception object not initialized', E_USER_WARNING);
+      return false;
+    }
+
     $i = 0;
     $s = "";
     foreach ($this->getTrace() as $frame) {
