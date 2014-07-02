@@ -1149,7 +1149,7 @@ Variant f_simplexml_load_file(const String& filename,
                               int64_t options /* = 0 */, const String& ns /* = "" */,
                               bool is_prefix /* = false */) {
   SYNC_VM_REGS_SCOPED();
-  Class* cls = class_from_name(class_name, "simplexml_load_string");
+  Class* cls = class_from_name(class_name, "simplexml_load_file");
   if (!cls) {
     return init_null();
   }
