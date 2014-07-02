@@ -1148,8 +1148,24 @@ Variant f_simplexml_load_file(const String& filename,
                               const String& class_name /* = "SimpleXMLElement" */,
                               int64_t options /* = 0 */, const String& ns /* = "" */,
                               bool is_prefix /* = false */) {
-  String str = f_file_get_contents(filename);
-  return f_simplexml_load_string(str, class_name, options, ns, is_prefix);
+  SYNC_VM_REGS_SCOPED();
+  Class* cls = class_from_name(class_name, "simplexml_load_string");
+  if (!cls) {
+    return init_null();
+  }
+
+  xmlDocPtr doc = xmlReadFile(filename.c_str(), nullptr, options);
+  if (!doc) {
+    return false;
+  }
+
+  Object obj = create_object(cls->nameStr(), Array(), false);
+  c_SimpleXMLElement* sxe = obj.getTyped<c_SimpleXMLElement>();
+  sxe->document = Resource(NEWOBJ(XmlDocWrapper)(doc));
+  sxe->node = xmlDocGetRootElement(doc);
+  sxe->iter.nsprefix = ns.size() ? xmlStrdup((xmlChar*)ns.data()) : nullptr;
+  sxe->iter.isprefix = is_prefix;
+  return obj;
 }
 
 ///////////////////////////////////////////////////////////////////////////////

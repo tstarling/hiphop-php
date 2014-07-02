@@ -418,6 +418,7 @@ class LibXMLExtension : public Extension {
       HHVM_FE(libxml_clear_errors);
       HHVM_FE(libxml_use_internal_errors);
       HHVM_FE(libxml_disable_entity_loader);
+      HHVM_FE(libxml_set_streams_context);
 
       loadSystemlib();
 
