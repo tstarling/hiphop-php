@@ -292,6 +292,10 @@ static int libxml_streams_IO_write(void *context, const char *buffer, int len) {
 }
 
 static int libxml_streams_IO_close(void *context) {
+  if (MemoryManager::sweeping()) {
+    // Stream wrappers close themselves on sweep, so there's nothing to do here
+    return 0;
+  }
   Resource stream = (ResourceData*)context;
   int ret = f_fclose(stream) ? 0 : -1;
   stream.get()->decRefAndRelease();
