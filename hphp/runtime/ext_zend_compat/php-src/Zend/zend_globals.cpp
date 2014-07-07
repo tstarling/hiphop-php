@@ -1,25 +1,46 @@
 #include "zend.h"
 #include "zend_globals.h"
+#include "zend_exceptions.h"
 
 #include "hphp/runtime/base/externals.h"
 #include "hphp/util/thread-local.h"
+#include "hphp/runtime/base/request-local.h"
+#include "hphp/runtime/base/request-event-handler.h"
 
 ZEND_API zend_compiler_globals compiler_globals;
 
-static IMPLEMENT_THREAD_LOCAL(_zend_executor_globals, s_zend_executor_globals);
+namespace HPHP {
+  class ZendExecutorGlobals : public RequestEventHandler {
+    public:
+      virtual void requestInit() {
+        m_data.exception = nullptr;
+      }
+
+      virtual void requestShutdown() {
+        TSRMLS_FETCH();
+        zend_clear_exception(TSRMLS_C);
+      }
+
+      virtual ~ZendExecutorGlobals() {}
+
+      _zend_executor_globals m_data;
+  };
+
+  IMPLEMENT_STATIC_REQUEST_LOCAL(ZendExecutorGlobals, s_zend_executor_globals);
+}
 
 #define G(TYPE, MEMBER)                                   \
   std::add_lvalue_reference<TYPE>::type EG_ ## MEMBER() { \
-    return s_zend_executor_globals.get()->MEMBER;         \
+    return HPHP::s_zend_executor_globals.get()->m_data.MEMBER;         \
   }
 EG_DEFAULT
 #undef G
 
 HashTable& EG_regular_list() {
-  return *s_zend_executor_globals.get()->regular_list;
+  return *HPHP::s_zend_executor_globals.get()->m_data.regular_list;
 }
 HashTable& EG_persistent_list() {
-  return *s_zend_executor_globals.get()->persistent_list;
+  return *HPHP::s_zend_executor_globals.get()->m_data.persistent_list;
 }
 
 HashTable& EG_symbol_table() {
