@@ -17,8 +17,14 @@ namespace HPHP {
       }
 
       virtual void requestShutdown() {
-        TSRMLS_FETCH();
-        zend_clear_exception(TSRMLS_C);
+        if (m_data.exception) {
+          zval_ptr_dtor(&m_data.exception);
+          m_data.exception = nullptr;
+        }
+        if (m_data.prev_exception) {
+          zval_ptr_dtor(&m_data.prev_exception);
+          m_data.prev_exception = nullptr;
+        }
       }
 
       virtual ~ZendExecutorGlobals() {}
