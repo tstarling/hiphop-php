@@ -1856,9 +1856,6 @@ void hphp_session_exit() {
     // reinitialize g_context here.
     g_context.getCheck();
 
-    // Clean up pcre state at the end of the request.
-    pcre_session_exit();
-
     mm.sweep();
 
     // Destroy g_context again because ExecutionContext has
@@ -1873,6 +1870,7 @@ void hphp_session_exit() {
     free_global_variables_after_sweep();
     g_context.getCheck();
   }
+
 
   ThreadInfo::s_threadInfo->onSessionExit();
   assert(mm.empty());
