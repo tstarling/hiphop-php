@@ -45,7 +45,7 @@ namespace HPHP {
 ///////////////////////////////////////////////////////////////////////////////
 // regex cache and helpers
 
-IMPLEMENT_THREAD_LOCAL(PCREglobals, s_pcre_globals);
+IMPLEMENT_THREAD_LOCAL(PCREglobals, tl_pcre_globals);
 
 pcre_cache_entry::~pcre_cache_entry() {
   if (extra) {
@@ -71,7 +71,7 @@ PCREglobals::~PCREglobals() {
 }
 
 void pcre_session_exit() {
-  s_pcre_globals->onSessionExit();
+  tl_pcre_globals->onSessionExit();
 }
 
 void PCREglobals::cleanupOnRequestEnd(const pcre_cache_entry* ent) {
@@ -134,7 +134,7 @@ insert_cached_pcre(const String& regex, const pcre_cache_entry* ent) {
     if (pair.first == s_pcreCacheMap->end()) {
       // Global Cache is full
       // still return the entry and free it at the end of the request
-      s_pcre_globals->cleanupOnRequestEnd(ent);
+      tl_pcre_globals->cleanupOnRequestEnd(ent);
       return ent;
     }
     // collision, delete the new one
@@ -144,17 +144,8 @@ insert_cached_pcre(const String& regex, const pcre_cache_entry* ent) {
   return ent;
 }
 
-/*
- * When a cached compiled pcre doesn't have pcre_extra, we use this
- * one.
- *
- * FIXME: It's unclear why this needs to be thread-local data instead
- * of just existing on the stack during the calls to preg_ functions.
- */
-static __thread pcre_extra t_extra_data;
-
 // The last pcre error code is available for the whole thread.
-static __thread int t_last_error_code;
+static __thread int tl_last_error_code;
 
 namespace {
 
@@ -172,15 +163,15 @@ private:
 typedef FreeHelperImpl<true> SmartFreeHelper;
 }
 
-static void set_extra_limits(pcre_extra*& extra) {
-  if (extra == nullptr) {
-    pcre_extra& extra_data = t_extra_data;
-    extra_data.flags = PCRE_EXTRA_MATCH_LIMIT |
-      PCRE_EXTRA_MATCH_LIMIT_RECURSION;
-    extra = &extra_data;
+static void init_local_extra(pcre_extra* local, pcre_extra* shared) {
+  if (shared) {
+    memcpy(local, shared, sizeof(pcre_extra));
+  } else {
+    memset(local, 0, sizeof(pcre_extra));
+    local->flags = PCRE_EXTRA_MATCH_LIMIT | PCRE_EXTRA_MATCH_LIMIT_RECURSION;
   }
-  extra->match_limit = s_pcre_globals->m_preg_backtrace_limit;
-  extra->match_limit_recursion = s_pcre_globals->m_preg_recursion_limit;
+  local->match_limit = tl_pcre_globals->m_preg_backtrace_limit;
+  local->match_limit_recursion = tl_pcre_globals->m_preg_recursion_limit;
 }
 
 static const char* const*
@@ -195,13 +186,13 @@ get_subpat_names(const pcre_cache_entry* pce) {
   * allocate the table, even though there may be no named subpatterns. This
   * avoids somewhat more complicated logic in the inner loops.
   */
-  pcre_extra *extra = pce->extra;
-  set_extra_limits(extra);
+  pcre_extra extra;
+  init_local_extra(&extra, pce->extra);
 
   int name_count;
 
   subpat_names = (char **)calloc(pce->num_subpats, sizeof(char *));
-  int rc = pcre_fullinfo(pce->re, extra, PCRE_INFO_NAMECOUNT, &name_count);
+  int rc = pcre_fullinfo(pce->re, &extra, PCRE_INFO_NAMECOUNT, &name_count);
   if (rc < 0) {
     raise_warning("Internal pcre_fullinfo() error %d", rc);
     return nullptr;
@@ -212,8 +203,8 @@ get_subpat_names(const pcre_cache_entry* pce) {
     char* name_table;
     int rc1, rc2;
 
-    rc1 = pcre_fullinfo(pce->re, extra, PCRE_INFO_NAMETABLE, &name_table);
-    rc2 = pcre_fullinfo(pce->re, extra, PCRE_INFO_NAMEENTRYSIZE, &name_size);
+    rc1 = pcre_fullinfo(pce->re, &extra, PCRE_INFO_NAMETABLE, &name_table);
+    rc2 = pcre_fullinfo(pce->re, &extra, PCRE_INFO_NAMEENTRYSIZE, &name_size);
     rc = rc2 ? rc2 : rc1;
     if (rc < 0) {
       raise_warning("Internal pcre_fullinfo() error %d", rc);
@@ -245,11 +236,11 @@ get_subpat_names(const pcre_cache_entry* pce) {
 }
 
 static bool get_pcre_fullinfo(pcre_cache_entry* pce) {
-  pcre_extra *extra = pce->extra;
-  set_extra_limits(extra);
+  pcre_extra extra;
+  init_local_extra(&extra, pce->extra);
 
   /* Calculate the size of the offsets array*/
-  int rc = pcre_fullinfo(pce->re, extra, PCRE_INFO_CAPTURECOUNT,
+  int rc = pcre_fullinfo(pce->re, &extra, PCRE_INFO_CAPTURECOUNT,
                          &pce->num_subpats);
   if (rc < 0) {
     raise_warning("Internal pcre_fullinfo() error %d", rc);
@@ -483,8 +474,8 @@ static void pcre_log_error(const char *func, int line, int pcre_code,
     "limits=(%" PRId64 ", %" PRId64 "), extra=(%d, %d, %d, %d)",
     func, line, pcre_code, errString,
     escapedPattern, escapedSubject, escapedRepl,
-    s_pcre_globals->m_preg_backtrace_limit,
-    s_pcre_globals->m_preg_recursion_limit,
+    tl_pcre_globals->m_preg_backtrace_limit,
+    tl_pcre_globals->m_preg_recursion_limit,
     arg1, arg2, arg3, arg4);
   free((void *)escapedPattern);
   free((void *)escapedSubject);
@@ -510,7 +501,7 @@ static void pcre_handle_exec_error(int pcre_code) {
     preg_code = PHP_PCRE_INTERNAL_ERROR;
     break;
   }
-  t_last_error_code = preg_code;
+  tl_last_error_code = preg_code;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -530,18 +521,18 @@ Variant preg_grep(const String& pattern, const Array& input, int flags /* = 0 */
 
   /* Initialize return array */
   Array ret = Array::Create();
-  t_last_error_code = PHP_PCRE_NO_ERROR;
+  tl_last_error_code = PHP_PCRE_NO_ERROR;
 
   /* Go through the input array */
   bool invert = (flags & PREG_GREP_INVERT);
-  pcre_extra *extra = pce->extra;
-  set_extra_limits(extra);
+  pcre_extra extra;
+  init_local_extra(&extra, pce->extra);
 
   for (ArrayIter iter(input); iter; ++iter) {
     String entry = iter.second().toString();
 
     /* Perform the match */
-    int count = pcre_exec(pce->re, extra, entry.data(), entry.size(),
+    int count = pcre_exec(pce->re, &extra, entry.data(), entry.size(),
                           0, 0, offsets, size_offsets);
 
     /* Check for too many substrings condition. */
@@ -582,8 +573,8 @@ static Variant preg_match_impl(const String& pattern, const String& subject,
     return false;
   }
 
-  pcre_extra *extra = pce->extra;
-  set_extra_limits(extra);
+  pcre_extra extra;
+  init_local_extra(&extra, pce->extra);
   if (subpats) {
     *subpats = Array::Create();
   }
@@ -640,14 +631,14 @@ static Variant preg_match_impl(const String& pattern, const String& subject,
   }
 
   int matched = 0;
-  t_last_error_code = PHP_PCRE_NO_ERROR;
+  tl_last_error_code = PHP_PCRE_NO_ERROR;
 
   int g_notempty = 0; // If the match should not be empty
   const char **stringlist; // Holds list of subpatterns
   int i;
   do {
     /* Execute the regular expression. */
-    int count = pcre_exec(pce->re, extra, subject.data(), subject.size(),
+    int count = pcre_exec(pce->re, &extra, subject.data(), subject.size(),
                           start_offset,
                           exec_options | g_notempty,
                           offsets, size_offsets);
@@ -930,9 +921,9 @@ static Variant php_pcre_replace(const String& pattern, const String& subject,
     /* Initialize */
     const char *match = nullptr;
     int start_offset = 0;
-    t_last_error_code = PHP_PCRE_NO_ERROR;
-    pcre_extra *extra = pce->extra;
-    set_extra_limits(extra);
+    tl_last_error_code = PHP_PCRE_NO_ERROR;
+    pcre_extra extra;
+    init_local_extra(&extra, pce->extra);
 
     const char *walk;     // Used to walk the replacement string
     char walk_last;       // Last walked character
@@ -942,7 +933,7 @@ static Variant php_pcre_replace(const String& pattern, const String& subject,
     int exec_options = 0; // Options passed to pcre_exec
     while (1) {
       /* Execute the regular expression. */
-      int count = pcre_exec(pce->re, extra, subject.data(), subject.size(),
+      int count = pcre_exec(pce->re, &extra, subject.data(), subject.size(),
                             start_offset,
                             exec_options | g_notempty,
                             offsets, size_offsets);
@@ -1311,9 +1302,9 @@ Variant preg_split(const String& pattern, const String& subject,
   int start_offset = 0;
   int next_offset = 0;
   const char *last_match = subject.data();
-  t_last_error_code = PHP_PCRE_NO_ERROR;
-  pcre_extra *extra = pce->extra;
-  set_extra_limits(extra);
+  tl_last_error_code = PHP_PCRE_NO_ERROR;
+  pcre_extra extra;
+  init_local_extra(&extra, pce->extra);
 
   // Get next piece if no limit or limit not yet reached and something matched
   Array return_value = Array::Create();
@@ -1321,7 +1312,7 @@ Variant preg_split(const String& pattern, const String& subject,
   int utf8_check = 0;
   const pcre_cache_entry* bump_pce = nullptr; /* instance for empty matches */
   while ((limit == -1 || limit > 1)) {
-    int count = pcre_exec(pce->re, extra, subject.data(), subject.size(),
+    int count = pcre_exec(pce->re, &extra, subject.data(), subject.size(),
                           start_offset, g_notempty | utf8_check,
                           offsets, size_offsets);
 
@@ -1393,9 +1384,9 @@ Variant preg_split(const String& pattern, const String& subject,
               return false;
             }
           }
-          pcre_extra *extra = bump_pce->extra;
-          set_extra_limits(extra);
-          count = pcre_exec(bump_pce->re, extra, subject.data(),
+          pcre_extra bump_extra;
+          init_local_extra(&bump_extra, bump_pce->extra);
+          count = pcre_exec(bump_pce->re, &bump_extra, subject.data(),
                             subject.size(), start_offset,
                             0, offsets, size_offsets);
           if (count < 1) {
@@ -1516,7 +1507,7 @@ String preg_quote(const String& str,
 }
 
 int preg_last_error() {
-  return t_last_error_code;
+  return tl_last_error_code;
 }
 
 size_t preg_pcre_cache_size() {
