@@ -428,6 +428,12 @@ bool HttpRequestHandler::executePHPRequest(Transport *transport,
                                            SourceRootInfo &sourceRootInfo,
                                            bool cacheableDynamicContent) {
   ExecutionContext *context = hphp_context_init();
+  int obFlags = k_PHP_OUTPUT_HANDLER_STDFLAGS;
+  if (cacheableDynamicContent) {
+    obFlags &= ~k_PHP_OUTPUT_HANDLER_FLUSHABLE;
+  }
+  context->obStart(uninit_null(), 0, obFlags);
+  context->obProtect(true);
   if (RuntimeOption::ImplicitFlush) {
     context->obSetImplicitFlush(true);
   }

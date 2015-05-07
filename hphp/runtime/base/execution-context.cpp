@@ -45,7 +45,6 @@
 #include "hphp/runtime/base/unit-cache.h"
 #include "hphp/runtime/debugger/debugger.h"
 #include "hphp/runtime/ext/ext_system_profiler.h"
-#include "hphp/runtime/ext/std/ext_std_output.h"
 #include "hphp/runtime/ext/string/ext_string.h"
 #include "hphp/runtime/server/server-stats.h"
 #include "hphp/runtime/vm/jit/translator-inline.h"
@@ -252,12 +251,13 @@ void ExecutionContext::obProtect(bool on) {
 }
 
 void ExecutionContext::obStart(const Variant& handler /* = null */,
-                               int chunk_size /* = 0 */) {
+                               int chunk_size /* = 0 */,
+                               int flags /* = k_PHP_OUTPUT_HANDLER_STDFLAGS */) {
   if (m_insideOBHandler) {
     raise_error("ob_start(): Cannot use output buffering "
                 "in output buffering display handlers");
   }
-  m_buffers.emplace_back(Variant(handler), chunk_size);
+  m_buffers.emplace_back(Variant(handler), chunk_size, flags);
   resetCurrentBuffer();
 }
 
@@ -315,7 +315,9 @@ bool ExecutionContext::obFlush() {
 
   if (iter != m_buffers.begin()) {
     OutputBuffer& prev = *(--iter);
-    if (last.handler.isNull()) {
+    if (!(last.flags & k_PHP_OUTPUT_HANDLER_FLUSHABLE)) {
+      return false;
+    } else if (last.handler.isNull()) {
       prev.oss.absorb(last.oss);
     } else {
       auto str = last.oss.detach();
@@ -387,6 +389,7 @@ int ExecutionContext::obGetLevel() {
 const StaticString
   s_level("level"),
   s_type("type"),
+  s_flags("flags"),
   s_name("name"),
   s_args("args"),
   s_chunk_size("chunk_size"),
@@ -405,6 +408,7 @@ Array ExecutionContext::obGetStatus(bool full) {
       status.set(s_name, buffer.handler);
       status.set(s_type, 1);
     }
+    status.set(s_flags, buffer.flags);
     status.set(s_level, level);
     status.set(s_chunk_size, buffer.chunk_size);
     status.set(s_buffer_used, buffer.oss.size());
@@ -417,6 +421,22 @@ Array ExecutionContext::obGetStatus(bool full) {
     level++;
   }
   return ret;
+}
+
+String ExecutionContext::obGetBufferName() {
+  if (m_buffers.empty()) {
+    return String();
+  } else if (m_buffers.size() <= m_protectedLevel) {
+    return s_default_output_handler;
+  } else {
+    auto iter = m_buffers.end();
+    OutputBuffer& buffer = *(--iter);
+    if (buffer.handler.isNull()) {
+      return s_default_output_handler;
+    } else {
+      return buffer.handler.toString();
+    }
+  }
 }
 
 void ExecutionContext::obSetImplicitFlush(bool on) {
@@ -436,6 +456,7 @@ void ExecutionContext::flush() {
   if (m_buffers.empty()) {
     fflush(stdout);
   } else if (RuntimeOption::EnableEarlyFlush && m_protectedLevel &&
+             (m_buffers.front().flags & k_PHP_OUTPUT_HANDLER_FLUSHABLE) &&
              (m_transport == nullptr ||
               (m_transport->getHTTPVersion() == "1.1" &&
                m_transport->getMethod() != Transport::Method::HEAD))) {
