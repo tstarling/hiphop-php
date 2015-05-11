@@ -211,6 +211,7 @@ static void safe_stdout(const  void  *ptr,  size_t  size) {
 }
 
 void ExecutionContext::writeStdout(const char *s, int len) {
+  fflush(stdout);
   if (m_stdout == nullptr) {
     if (s_stdout_color) {
       safe_stdout(s_stdout_color, strlen(s_stdout_color));
@@ -222,6 +223,14 @@ void ExecutionContext::writeStdout(const char *s, int len) {
     m_stdoutBytesWritten += len;
   } else {
     m_stdout(s, len, m_stdoutData);
+  }
+}
+
+void ExecutionContext::writeTransport(const char *s, int len) {
+  if (m_transport) {
+    m_transport->sendRaw((void*)s, len, 200, false, true);
+  } else {
+    writeStdout(s, len);
   }
 }
 
@@ -237,10 +246,10 @@ void ExecutionContext::write(const char *s, int len) {
         obFlush();
       }
     }
+    if (m_implicitFlush) flush();
   } else {
-    writeStdout(s, len);
+    writeTransport(s, len);
   }
-  if (m_implicitFlush) flush();
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -304,7 +313,7 @@ void ExecutionContext::obClean(int handler_flag) {
 bool ExecutionContext::obFlush() {
   assert(m_protectedLevel >= 0);
 
-  if ((int)m_buffers.size() <= m_protectedLevel) {
+  if (m_buffers.empty()) {
     return false;
   }
 
@@ -352,17 +361,19 @@ bool ExecutionContext::obFlush() {
       }
       str = tout.toString();
     } catch (...) {
-      writeStdout(str.data(), str.size());
+      writeTransport(str.data(), str.size());
       throw;
     }
   }
 
-  writeStdout(str.data(), str.size());
+  writeTransport(str.data(), str.size());
   return true;
 }
 
 void ExecutionContext::obFlushAll() {
-  while (obFlush()) { obEnd();}
+  do {
+    obFlush();
+  } while (obEnd());
 }
 
 bool ExecutionContext::obEnd() {
@@ -453,18 +464,12 @@ Array ExecutionContext::obGetHandlers() {
 }
 
 void ExecutionContext::flush() {
-  if (m_buffers.empty()) {
-    fflush(stdout);
-  } else if (RuntimeOption::EnableEarlyFlush && m_protectedLevel &&
-             (m_buffers.front().flags & k_PHP_OUTPUT_HANDLER_FLUSHABLE)) {
+  if (!m_buffers.empty() &&
+      RuntimeOption::EnableEarlyFlush && m_protectedLevel &&
+      (m_buffers.front().flags & k_PHP_OUTPUT_HANDLER_FLUSHABLE)) {
     StringBuffer &oss = m_buffers.front().oss;
     if (!oss.empty()) {
-      if (m_transport) {
-        m_transport->sendRaw((void*)oss.data(), oss.size(), 200, false, true);
-      } else {
-        writeStdout(oss.data(), oss.size());
-        fflush(stdout);
-      }
+      writeTransport(oss.data(), oss.size());
       oss.clear();
     }
   }

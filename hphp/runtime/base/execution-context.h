@@ -170,6 +170,11 @@ public:
   void writeStdout(const char* s, int len);
   size_t getStdoutBytesWritten() const;
 
+  /**
+   * Write to the transport, or to stdout if there is no transport.
+   */
+  void writeTransport(const char* s, int len);
+
   using PFUNC_STDOUT = void (*)(const char* s, int len, void* data);
   void setStdout(PFUNC_STDOUT func, void* data);
 
