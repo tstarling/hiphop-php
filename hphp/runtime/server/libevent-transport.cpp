@@ -269,17 +269,18 @@ void LibEventTransport::sendImpl(const void *data, int size, int code,
     return;
   }
   if (chunked) {
-    assert(m_method != Method::HEAD);
-    evbuffer *chunk = evbuffer_new();
-    evbuffer_add(chunk, data, size);
-    /*
-     * Chunked replies are sent async, so there is no way to know the
-     * time it took to flush the response, but tracking the bytes sent is
-     * very useful.
-     */
-    onChunkedProgress(size);
-    m_server->onChunkedResponse(m_workerId, m_request, code, chunk,
-                               !m_sendStarted);
+    if (m_method != Method::HEAD) {
+      evbuffer *chunk = evbuffer_new();
+      evbuffer_add(chunk, data, size);
+      /*
+       * Chunked replies are sent async, so there is no way to know the
+       * time it took to flush the response, but tracking the bytes sent is
+       * very useful.
+       */
+      onChunkedProgress(size);
+      m_server->onChunkedResponse(m_workerId, m_request, code, chunk,
+                                 !m_sendStarted);
+    }
   } else {
     if (m_method != Method::HEAD) {
       evbuffer_add(m_request->output_buffer, data, size);
