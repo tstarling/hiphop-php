@@ -456,9 +456,7 @@ void ExecutionContext::flush() {
   if (m_buffers.empty()) {
     fflush(stdout);
   } else if (RuntimeOption::EnableEarlyFlush && m_protectedLevel &&
-             (m_buffers.front().flags & k_PHP_OUTPUT_HANDLER_FLUSHABLE) &&
-             (m_transport == nullptr ||
-              m_transport->getHTTPVersion() == "1.1")) {
+             (m_buffers.front().flags & k_PHP_OUTPUT_HANDLER_FLUSHABLE)) {
     StringBuffer &oss = m_buffers.front().oss;
     if (!oss.empty()) {
       if (m_transport) {
