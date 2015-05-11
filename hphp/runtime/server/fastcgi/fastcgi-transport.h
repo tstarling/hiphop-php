@@ -229,6 +229,12 @@ struct FastCGITransport : public Transport, private Synchronizable {
 #undef O
 #undef FCGI_PROTOCOL_HEADERS
 
+  // Give a write size hint somewhat less than the maximum size of a FastCGI
+  // record. Experimentally determined for best performance.
+  int getWriteSizeHint() override {
+    return 64500;
+  }
+
 private:
   ///////////////////////////////////////////////////////////////////////////
   // Header manipulation and lookup

@@ -433,7 +433,7 @@ bool HttpRequestHandler::executePHPRequest(Transport *transport,
       transport->getHTTPVersion() != "1.1") {
     obFlags &= ~k_PHP_OUTPUT_HANDLER_FLUSHABLE;
   }
-  context->obStart(uninit_null(), 0, obFlags);
+  context->obStart(uninit_null(), transport->getWriteSizeHint(), obFlags);
   context->obProtect(true);
   if (RuntimeOption::ImplicitFlush) {
     context->obSetImplicitFlush(true);

@@ -255,6 +255,15 @@ public:
   virtual bool supportsServerPush() { return false; }
 
   /**
+   * Get the output buffer size hint. This tells the output buffer layer what
+   * the preferred maximum write size is, or zero if the transport wants the
+   * output buffer to avoid all unnecessary flushes.
+   */
+  virtual int getWriteSizeHint() {
+    return 0;
+  }
+
+  /**
    * Attempt to push the resource identified by host/path on this transport
    *
    * @param priority (3 bit priority, 0 = highest, 7 = lowest),

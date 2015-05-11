@@ -276,7 +276,11 @@ public:
     m_pushHandlers.erase(id);
   }
 
- private:
+  int getWriteSizeHint() override {
+    return 64500;
+  }
+
+private:
   bool bufferRequest() const;
 
   void sendErrorResponse(uint32_t code) noexcept;
