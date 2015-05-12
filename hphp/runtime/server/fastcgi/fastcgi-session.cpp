@@ -323,12 +323,27 @@ void FastCGISession::readErr(const folly::AsyncSocketException&) noexcept {
   ioStop();
 }
 
-void FastCGISession::writeErr(size_t,
-    const folly::AsyncSocketException&) noexcept {
+void FastCGISession::WriteCallback::writeErr(
+  size_t bytesWritten,
+  const folly::AsyncSocketException& ex
+) noexcept {
+  m_session->writeErr(m_bufferSize, bytesWritten, ex);
+  delete this;
+}
+
+void FastCGISession::WriteCallback::writeSuccess() noexcept {
+  m_session->writeSuccess(m_bufferSize);
+  delete this;
+}
+
+void FastCGISession::writeErr(size_t bufferSize, size_t,
+                              const folly::AsyncSocketException&) noexcept {
+  discardWriteBuffer(bufferSize);
   ioStop();
 }
 
-void FastCGISession::writeSuccess() noexcept {
+void FastCGISession::writeSuccess(size_t bufferSize) noexcept {
+  discardWriteBuffer(bufferSize);
   if (--m_eventCount == 0 && m_shutdown) {
     // If we were terminating and this was the last pending event then trigger
     // the delete.
@@ -336,16 +351,55 @@ void FastCGISession::writeSuccess() noexcept {
   }
 }
 
+void FastCGISession::addWriteBuffer(size_t bufferSize) noexcept {
+  Lock lock(&m_writeSync);
+  m_writeQueueSize += bufferSize;
+}
+
+void FastCGISession::discardWriteBuffer(size_t bufferSize) noexcept {
+  Lock lock(&m_writeSync);
+  size_t oldSize = m_writeQueueSize;
+  m_writeQueueSize -= bufferSize;
+  if (oldSize >= m_maxWriteQueueSize &&
+      m_writeQueueSize < m_maxWriteQueueSize) {
+    m_writeSync.notify();
+  }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
-void FastCGISession::onStdOut(std::unique_ptr<IOBuf> chain) {
+const int k_maxEventQueueSize = 8;
+
+void FastCGISession::blockingWriteStdOut(std::unique_ptr<IOBuf> chain) {
+  long maxWait = RuntimeOption::ConnectionTimeoutSeconds;
+  if (maxWait <= 0) {
+    maxWait = 50; // this was the default read timeout in LibEventServer
+  }
+
+  {
+    Lock lock(&m_writeSync);
+    while (m_writeQueueSize >= m_maxWriteQueueSize) {
+      m_writeSync.wait(maxWait);
+    }
+  }
+
   // FastCGITransport doesn't run in the same event base. Calling into internal
   // functions here is unsafe from other threads so we enqueue the work for the
   // event base.
+
   folly::MoveWrapper<std::unique_ptr<IOBuf>> chain_wrapper(std::move(chain));
-  m_eventBase->runInEventBaseThread([this, chain_wrapper]() mutable {
+  auto callback = [this, chain_wrapper]() mutable {
     writeStream(fcgi::STDOUT, std::move(*chain_wrapper));
-  });
+  };
+
+  // Queueing the work unconditionally can lead to the queue size growing to
+  // hundreds of thousands of entries, if events are not dequeued fast enough.
+  // So clear the queue periodically if it gets too large.
+  if (m_eventBase->getNotificationQueueSize() > k_maxEventQueueSize) {
+    m_eventBase->runInEventBaseThreadAndWait(callback);
+  } else {
+    m_eventBase->runInEventBaseThread(callback);
+  }
 }
 
 void FastCGISession::onComplete() {
@@ -432,7 +486,16 @@ void FastCGISession::enqueueWrite(std::unique_ptr<IOBuf> chain) {
     return;
   }
   ++m_eventCount;
-  m_sock->writeChain(this, std::move(chain));
+
+  uint64_t length = chain->computeChainDataLength();
+  addWriteBuffer(length);
+
+  // Create a callback object to track the chain length, so that we can
+  // account for it when the chain is destroyed. AsyncSocket::destroy() will
+  // call all the pending callbacks before it deletes itself, so the session
+  // pointer should remain valid until the callback is called.
+  WriteCallback * callback = new WriteCallback(this, length);
+  m_sock->writeChain(callback, std::move(chain));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

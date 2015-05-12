@@ -173,7 +173,7 @@ void FastCGITransport::sendImpl(const void *data, int size, int code,
   }
 
   m_txBuf.append(data, size);
-  m_session->onStdOut(m_txBuf.move()); // session will handle locking
+  m_session->blockingWriteStdOut(m_txBuf.move());
 
   if (eom) {
     onSendEndImpl();

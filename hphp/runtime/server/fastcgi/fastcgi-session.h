@@ -178,7 +178,6 @@ private:
 struct FastCGISession
   : public  folly::wangle::ManagedConnection
   , private folly::AsyncSocket::ReadCallback
-  , private folly::AsyncSocket::WriteCallback
 {
   FastCGISession(
     folly::EventBase* evBase,
@@ -211,8 +210,29 @@ private:
   void readErr(const folly::AsyncSocketException&) noexcept override;
 
   // Async write callbacks
-  void writeErr(size_t, const folly::AsyncSocketException&) noexcept override;
-  void writeSuccess() noexcept override;
+  void writeErr(size_t bufferSize, size_t bytesWritten,
+                const folly::AsyncSocketException& ex) noexcept;
+  void writeSuccess(size_t bufferSize) noexcept;
+
+  struct WriteCallback : folly::AsyncSocket::WriteCallback {
+    WriteCallback(FastCGISession* session,
+                  size_t bufferSize)
+      : m_session(session), m_bufferSize(bufferSize)
+    {}
+
+    void writeErr(size_t bytesWritten,
+                  const folly::AsyncSocketException& ex) noexcept override;
+    void writeSuccess() noexcept override;
+
+    FastCGISession* m_session;
+    size_t m_bufferSize;
+  };
+
+  // Add a buffer to m_writeQueueSize.
+  void addWriteBuffer(size_t bufferSize) noexcept;
+
+  // Remove a buffer from m_writeQueueSize and wake up any blocked writers.
+  void discardWriteBuffer(size_t bufferSize) noexcept;
 
 public:
   // Callbacks to send data back to webserver for FastCGITransport. Ideally
@@ -220,7 +240,7 @@ public:
   //
   // NB: FastCGITransport runs in its own thread and these callbacks need to
   //     explicitly place their work onto the event base thread!
-  void onStdOut(std::unique_ptr<folly::IOBuf> chain);
+  void blockingWriteStdOut(std::unique_ptr<folly::IOBuf> chain);
   void onComplete();
 
 private:
@@ -295,7 +315,7 @@ private:
   //
   // writeEndRequest and writeUnknownType send discrete records
   //
-  // writeStream will write either FCGI_STDIN or FCGI_STDOUT streams
+  // writeStream will write either FCGI_STDERR or FCGI_STDOUT streams
 
   // Respond to the webserver with a requested capability
   void writeCapability(const std::string& key); // Send FCGI_GET_VALUES_RESULT
@@ -375,6 +395,13 @@ private:
   // onComplete() from a currently open transport a pending event as the
   // transport may try to call us to write data until it completes.
   size_t m_eventCount{0};
+
+  // The size of the write queue currently active inside m_session->m_sock
+  size_t m_writeQueueSize{0};
+  size_t m_maxWriteQueueSize{131072};
+
+  // A condition variable to support blocking write emulation
+  Synchronizable m_writeSync;
 
   //////////////////////////////////////////////////////////////////////////////
   // Request data- transport and flags
