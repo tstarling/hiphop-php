@@ -319,14 +319,15 @@ bool ExecutionContext::obFlush() {
 
   auto iter = m_buffers.end();
   OutputBuffer& last = *(--iter);
+  if (!(last.flags & k_PHP_OUTPUT_HANDLER_FLUSHABLE)) {
+    return false;
+  }
 
   const int flag = k_PHP_OUTPUT_HANDLER_START | k_PHP_OUTPUT_HANDLER_END;
 
   if (iter != m_buffers.begin()) {
     OutputBuffer& prev = *(--iter);
-    if (!(last.flags & k_PHP_OUTPUT_HANDLER_FLUSHABLE)) {
-      return false;
-    } else if (last.handler.isNull()) {
+    if (last.handler.isNull()) {
       prev.oss.absorb(last.oss);
     } else {
       auto str = last.oss.detach();
